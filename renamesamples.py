@@ -52,68 +52,92 @@ def rename_and_process_files(current_directory, samplename, samplesheet, skip_gz
         for file_name in files:
             # Split the filename by a specific delimiter (e.g., "_")
             parts = file_name.split("_")
+            if len(parts) == 6:
+                del parts[1]
 
             # Check if there are at least two elements in the split result
             if len(parts) >= 3:
-                index = samplesheet.index(parts[0])
-                # Construct the "S<element number>" sample sheet location
-                element_number = index + 1
-                S_string = f'S{element_number}'
+                if parts[0].startswith("S") and parts[0][1:].isdigit():
+                    filestart = f'{parts[0]}_{parts[1]}'
+                    del parts[0]
+                else:
+                    filestart = f'{parts[0]}'
+
+                print(filestart)
+                try:
+                    # Check if filestart matches the second part of any entry in samplesheet
+                    matched_index = None
+                    for index, entry in enumerate(samplesheet):
+                        if entry.endswith(f"_{filestart}"):  # Check if the entry ends with "_<filestart>"
+                            matched_index = index
+                            break
+
+                    # Construct the "S<element number>" sample sheet location
+                    element_number = index + 1
+                    S_string = f'S{element_number}'
+
+                    # Remove all this: CKDL230023209-1A_H75KCDSX7
+                    del parts[1:3]
                 
-                # Remove all this: CKDL230023209-1A_H75KCDSX7
-                del parts[1:3]
-                
-                # Store the Lane number
-                fourth_element = parts[1]
+                    # Store the Lane number
+                    fourth_element = parts[1]
 
-                # Check if filename ends with _1 or _2 for forward or reverse reads
-                if parts[2].startswith("1"):
-                    FR = "_R1"
-                elif parts[2].startswith("2"):
-                    FR = "_R2"
-                parts[1] = S_string + "_" + fourth_element[:1] + "00" + fourth_element[1:] + FR + "_001"
-                
-                # Remove the "_1" or "_2"
-                last_element = parts[2]
-                parts[2] = last_element[2:]
-
-                # Construct the new filename
-                new_file_name = "_".join(parts)
-                new_file_name = new_file_name.replace("_fq", ".fastq")
-
-                # Construct the old and new file paths
-                old_file_path = os.path.join(root, file_name)
-                new_file_path = os.path.join(root, samplename + new_file_name)
-
-                # Rename the file
-                os.rename(old_file_path, new_file_path)
-
-                print(f"Processed: {new_file_path}")
-
-                if not skip_gzip and new_file_path.endswith(".gz"):
-                    # Define the output file path for the decompressed content
-                    output_file_path = new_file_path.rstrip(".gz")
-
-                    # Open the .gz file and the output file
-                    with gzip.open(new_file_path, 'rb', compresslevel=1) as gzipped_file, open(output_file_path, 'wb') as output_file:
-                        # Read the compressed content and write it to the output file
-                        while True:
-                            chunk = gzipped_file.read(1024)
-                            if not chunk:
-                                break
-                            output_file.write(chunk)
-
-                    # Recompress the decompressed file
-                    recompressed_file_path = output_file_path + ".gz"
-                    with open(output_file_path, 'rb') as input_file, gzip.open(recompressed_file_path, 'wb') as gzipped_output_file:
-                        while True:
-                            chunk = input_file.read(1024)
-                            if not chunk:
-                                break
-                            gzipped_output_file.write(chunk)
+                    # Initialize FR with a default value
+                    FR = ""
+                    if parts[2].startswith("1"):
+                        FR = "_R1"
+                    elif parts[2].startswith("2"):
+                        FR = "_R2"
+                    else:
+                        print(f"Warning: Unrecognized read type in {file_name}. Expected '1' or '2'.")
+                        continue  # Skip to the next file if not recognized
                     
-                    # Delete the original uncompressed file
-                    os.remove(output_file_path)
+                    parts[1] = S_string + "_" + fourth_element[:1] + "00" + fourth_element[1:] + FR + "_001"
+                
+                    # Remove the "_1" or "_2"
+                    last_element = parts[2]
+                    parts[2] = last_element[2:]
+
+                    # Construct the new filename
+                    new_file_name = "_".join(parts)
+                    new_file_name = new_file_name.replace("_fq", ".fastq")
+
+                    # Construct the old and new file paths
+                    old_file_path = os.path.join(root, file_name)
+                    new_file_path = os.path.join(root, samplename + new_file_name)
+
+                    # Rename the file
+                    os.rename(old_file_path, new_file_path)
+
+                    print(f"Processed: {new_file_path}")
+
+                    if not skip_gzip and new_file_path.endswith(".gz"):
+                        # Define the output file path for the decompressed content
+                        output_file_path = new_file_path.rstrip(".gz")
+
+                        # Open the .gz file and the output file
+                        with gzip.open(new_file_path, 'rb', compresslevel=1) as gzipped_file, open(output_file_path, 'wb') as output_file:
+                            # Read the compressed content and write it to the output file
+                            while True:
+                                chunk = gzipped_file.read(1024)
+                                if not chunk:
+                                    break
+                                output_file.write(chunk)
+
+                        # Recompress the decompressed file
+                        recompressed_file_path = output_file_path + ".gz"
+                        with open(output_file_path, 'rb') as input_file, gzip.open(recompressed_file_path, 'wb') as gzipped_output_file:
+                            while True:
+                                chunk = input_file.read(1024)
+                                if not chunk:
+                                    break
+                                gzipped_output_file.write(chunk)
+                    
+                        # Delete the original uncompressed file
+                        os.remove(output_file_path)
+
+                except ValueError:
+                    print(f"Skipped: {file_name} - Error occurred while processing")  # Handle the error here (or you can leave it blank to just proceed)
             else:
                 print(f"Skipped: {file_name} - Unable to split into at least two parts")
 
